@@ -10,8 +10,10 @@ import java.util.stream.Collectors;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.r2dbc.convert.R2dbcConverter;
 import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
+import org.springframework.data.r2dbc.core.StatementMapper;
 import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.r2dbc.repository.R2dbcRepository;
+import org.springframework.data.relational.core.query.Criteria;
 import org.springframework.data.relational.core.sql.Column;
 import org.springframework.data.relational.core.sql.Expression;
 import org.springframework.data.relational.core.sql.Table;
@@ -63,13 +65,11 @@ interface UserRepositoryInternal extends DeleteExtended<User> {
 
 class UserRepositoryInternalImpl implements UserRepositoryInternal {
 
-    private final DatabaseClient db;
     private final R2dbcEntityTemplate r2dbcEntityTemplate;
 
     private final R2dbcConverter r2dbcConverter;
 
     public UserRepositoryInternalImpl(DatabaseClient db, R2dbcEntityTemplate r2dbcEntityTemplate, R2dbcConverter r2dbcConverter) {
-        this.db = db;
         this.r2dbcEntityTemplate = r2dbcEntityTemplate;
         this.r2dbcConverter = r2dbcConverter;
     }
@@ -85,7 +85,8 @@ class UserRepositoryInternalImpl implements UserRepositoryInternal {
     }
 
     private Mono<User> findOneWithAuthoritiesBy(String fieldName, Object fieldValue) {
-        return db
+        return r2dbcEntityTemplate
+            .getDatabaseClient()
             .sql("SELECT * FROM jhi_user u LEFT JOIN jhi_user_authority ua ON u.id=ua.user_id WHERE u." + fieldName + " = :" + fieldName)
             .bind(fieldName, fieldValue)
             .map(
@@ -118,10 +119,16 @@ class UserRepositoryInternalImpl implements UserRepositoryInternal {
 
     @Override
     public Mono<Void> delete(User user) {
-        return db
-            .sql("DELETE FROM jhi_user_authority WHERE user_id = :userId")
-            .bind("userId", user.getId())
-            .then()
+        StatementMapper.DeleteSpec jhiAuthorityDelete = r2dbcEntityTemplate
+            .getDataAccessStrategy()
+            .getStatementMapper()
+            .createDelete("jhi_user_authority")
+            .withCriteria(where("user_id").is(user.getId()));
+        return r2dbcEntityTemplate
+            .getDatabaseClient()
+            .sql(r2dbcEntityTemplate.getDataAccessStrategy().getStatementMapper().getMappedObject(jhiAuthorityDelete))
+            .fetch()
+            .all()
             .then(
                 r2dbcEntityTemplate
                     .delete(User.class)
