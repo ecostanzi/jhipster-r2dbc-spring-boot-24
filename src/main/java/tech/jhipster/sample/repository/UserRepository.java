@@ -1,19 +1,21 @@
 package tech.jhipster.sample.repository;
 
+import static org.springframework.data.relational.core.query.Criteria.where;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.r2dbc.core.DatabaseClient;
-import org.springframework.data.r2dbc.core.ReactiveDataAccessStrategy;
+import org.springframework.data.r2dbc.convert.R2dbcConverter;
+import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.r2dbc.repository.R2dbcRepository;
-import org.springframework.data.relational.core.query.Criteria;
 import org.springframework.data.relational.core.sql.Column;
 import org.springframework.data.relational.core.sql.Expression;
 import org.springframework.data.relational.core.sql.Table;
+import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.stereotype.Repository;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -62,11 +64,14 @@ interface UserRepositoryInternal extends DeleteExtended<User> {
 class UserRepositoryInternalImpl implements UserRepositoryInternal {
 
     private final DatabaseClient db;
-    private final ReactiveDataAccessStrategy dataAccessStrategy;
+    private final R2dbcEntityTemplate r2dbcEntityTemplate;
 
-    public UserRepositoryInternalImpl(DatabaseClient db, ReactiveDataAccessStrategy dataAccessStrategy) {
+    private final R2dbcConverter r2dbcConverter;
+
+    public UserRepositoryInternalImpl(DatabaseClient db, R2dbcEntityTemplate r2dbcEntityTemplate, R2dbcConverter r2dbcConverter) {
         this.db = db;
-        this.dataAccessStrategy = dataAccessStrategy;
+        this.r2dbcEntityTemplate = r2dbcEntityTemplate;
+        this.r2dbcConverter = r2dbcConverter;
     }
 
     @Override
@@ -81,16 +86,11 @@ class UserRepositoryInternalImpl implements UserRepositoryInternal {
 
     private Mono<User> findOneWithAuthoritiesBy(String fieldName, Object fieldValue) {
         return db
-            .execute(
-                "SELECT * FROM jhi_user u LEFT JOIN jhi_user_authority ua ON u.id=ua.user_id WHERE u." + fieldName + " = :" + fieldName
-            )
+            .sql("SELECT * FROM jhi_user u LEFT JOIN jhi_user_authority ua ON u.id=ua.user_id WHERE u." + fieldName + " = :" + fieldName)
             .bind(fieldName, fieldValue)
             .map(
                 (row, metadata) ->
-                    Tuples.of(
-                        dataAccessStrategy.getRowMapper(User.class).apply(row, metadata),
-                        Optional.ofNullable(row.get("authority_name", String.class))
-                    )
+                    Tuples.of(r2dbcConverter.read(User.class, row, metadata), Optional.ofNullable(row.get("authority_name", String.class)))
             )
             .all()
             .collectList()
@@ -119,10 +119,16 @@ class UserRepositoryInternalImpl implements UserRepositoryInternal {
     @Override
     public Mono<Void> delete(User user) {
         return db
-            .execute("DELETE FROM jhi_user_authority WHERE user_id = :userId")
+            .sql("DELETE FROM jhi_user_authority WHERE user_id = :userId")
             .bind("userId", user.getId())
             .then()
-            .then(db.delete().from(User.class).matching(Criteria.where("id").is(user.getId())).then());
+            .then(
+                r2dbcEntityTemplate
+                    .delete(User.class)
+                    .matching(org.springframework.data.relational.core.query.Query.query(where("id").is(user.getId())))
+                    .all()
+                    .then()
+            );
     }
 }
 
