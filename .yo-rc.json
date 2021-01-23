@@ -40,6 +40,8 @@
     "messageBroker": false,
     "clientTheme": "none",
     "clientThemeVariant": "",
-    "withAdminUi": true
+    "withAdminUi": true,
+    "lastLiquibaseTimestamp": 1611255557000,
+    "entities": ["Blog"]
   }
 }
