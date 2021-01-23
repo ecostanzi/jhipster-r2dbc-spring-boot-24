@@ -2,6 +2,7 @@ package tech.jhipster.sample.service;
 
 import io.r2dbc.spi.Row;
 import org.springframework.core.convert.ConversionService;
+import org.springframework.data.r2dbc.convert.R2dbcConverter;
 import org.springframework.data.r2dbc.convert.R2dbcCustomConversions;
 import org.springframework.data.r2dbc.core.ReactiveDataAccessStrategy;
 import org.springframework.lang.Nullable;
@@ -17,8 +18,8 @@ public class ColumnConverter {
     private final ConversionService conversionService;
     private final R2dbcCustomConversions conversions;
 
-    public ColumnConverter(R2dbcCustomConversions conversions, ReactiveDataAccessStrategy dataAccess) {
-        this.conversionService = dataAccess.getConverter().getConversionService();
+    public ColumnConverter(R2dbcCustomConversions conversions, R2dbcConverter r2dbcConverter) {
+        this.conversionService = r2dbcConverter.getConversionService();
         this.conversions = conversions;
     }
 
